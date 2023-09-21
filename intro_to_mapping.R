@@ -3,7 +3,7 @@
 # 09/25/2023
 
 #---- Packages & Libraries #----
-# install.packages(c("tidyverse", "sf", "tigris", "tidycensus","tmap"))
+#install.packages(c("tidyverse", "sf", "tigris", "tidycensus","tmap"))
 library(tidyverse)
 library(sf)
 library(tigris)
@@ -32,11 +32,13 @@ play <- st_read("baltimore_playgrounds_osm.shp")
 # Now let's quickly map where the playgrounds are and we'll be done!
 plot(play$geometry)
   # It's important to include '$geometry' in the plot command - if we don't,
-  # R will plot each element of the spatial object (which can sometimes be a lot)
+  # R will plot each element of the spatial object (which can sometimes be a lot).
 
-# Oh... it's just a bunch of dots that kind of look like Baltimore if you squint
-# Let's add a basemap for context. We'll download the boundary file of the city.
+# Oh... it's just a bunch of dots that kind of look like Baltimore if you squint.
+# Let's add a little context. We'll download the boundary file of the city.
 bmore <- tigris::counties(state = "MD", cb = TRUE)
+  # The 'tigris::' code isn't necessary, but included just so you can see what
+  # package this function comes from.
 
 # Not let's plot our new Baltimore map
 plot(bmore$geometry)
@@ -44,6 +46,7 @@ plot(bmore$geometry)
 # Oh... it's the whole state. Let's filter for just Baltimore City. First, what
 # are the names and structure of the columns in the 'bmore' object?
 str(bmore)
+head(bmore)
 # Let's filter using the 'NAMELSAD' column. How is Baltimore recorded?
 unique(bmore$NAMELSAD)
 # The last name is 'Baltimore city' (lower case c, R is case-sensitive so pay attention!)
@@ -63,9 +66,9 @@ bmore <- bmore[bmore$NAMELSAD == "Baltimore city", ]
 bmore <- bmore %>%
   dplyr::filter(NAMELSAD == "Baltimore city")
 
-# Now let's plot the playground information again
+# Now let's plot the playground information again.
 plot(play$geometry)
-# And let's add the Baltimore map
+# And let's add the Baltimore map.
 plot(bmore$geometry)
 # Wait, where'd the playgrounds go? To plot multiple spatial layers, we'll need
 # to include 'add = TRUE' to our plot function. Let's try again
@@ -77,15 +80,15 @@ st_crs(play)
   ## NAD83 / Maryland (ftUS)
 st_crs(bmore)
   ## NAD83
-# That explains it. Let's reproject the Baltimore map to match the playgrounds
+# That explains it. Let's reproject the Baltimore map to match the playgrounds.
 bmore <- st_transform(bmore, crs = st_crs(play))
 
-# And let's try plotting again
+# And let's try plotting again.
 plot(play$geometry)
 plot(bmore$geometry, add = TRUE)
 
 # Part of Baltimore got clipped off... Let's switch the order of the plots to make
-# sure everything is visible
+# sure everything is visible.
 plot(bmore$geometry)
 plot(play$geometry, add = TRUE)
 
@@ -98,10 +101,18 @@ plot(play$geometry, add = TRUE)
 # the playground outreach will occur to make sure we have good coverage.
 
 # Let's download population counts by census tract using the tidycensus package.
-# We'll use the 2020 American Community Survey 5-year estimates. To get tract population,
-# we'll need to know the variable number.
+# This package uses the US Census Bureau's API to grab specific information from
+# census tables and requires an API key to access. I've included my API key here
+# for this demo, but PLEASE DON'T USE THIS FOR YOUR OWN WORK - too many requests
+# will get an account locked. Getting you own API key is really simple - just
+# visit http://api.census.gov/data/key_signup.html to register. You can then instal
+# your key inside the R .environ file so it will remember (kind of like storing
+# a password in your browser) using the 'census_api_key' function.
 
-# Let's load a list of the variables
+# We'll use the 2020 American Community Survey 5-year estimates. To get tract population,
+# we'll need to know the variable code first.
+
+# Let's load a list of the variables.
 load_variables(year = 2020, dataset = "acs5") %>%
   dplyr::filter(geography == "tract")
   ## Total population is 'B01001A_001'
@@ -115,42 +126,41 @@ tract.pop <- get_acs(
   survey = "acs5", # We want the 5-year ACS survey
   geometry = TRUE, # tidycensus will return a spatial object if we ask - how nice!
   output = "wide", # I thinks this format is a little easier to work with
-  key = "2082857cc31cbba17def539b8ab26a66b4ff4090" # My API key (ok to use here, 
-                                                   # but please don't use for your
-                                                   # own projects - Census will lock
-                                                   # out accounts that are making
-                                                   # too many API calls) - you can
-                                                   # register for your own key at:
-                                                   # http://api.census.gov/data/key_signup.html
-  )
+  key = "2082857cc31cbba17def539b8ab26a66b4ff4090") # My API key
 
 # We can plot population density now!
 plot(tract.pop$B01001A_001E)
 # Whoa, that's not what we're looking for. Turns out, making a map instead of a
-# typical data plot requires a specific type of function call.
+# typical data plot requires a specific type of function call for an sf class object.
 plot(tract.pop[, "B01001A_001E"])
-# That's a pretty non-intuitive name for the population variable - let's rename it.
+# Nice! But that's a pretty non-intuitive name for the population variable - let's
+# rename it.
 tract.pop <- tract.pop %>%
   mutate(totalpop = B01001A_001E)
 plot(tract.pop[, "totalpop"])
 
-# Now let's go ahead and re-project this spatial dataframe so it matches the playgrounds
+# Now let's go ahead and re-project this spatial dataframe so it matches the playgrounds.
 tract.pop <- tract.pop %>%
   st_transform(st_crs(play))
+  # We could also say 'st_transform(2248)', but using adaptive coding like we did
+  # here ensures that no matter what we set the playground projection to, this
+  # reprojected tract map will always match.
 
-# And let's overlay the playground locations
+# And let's overlay the playground locations.
 plot(tract.pop[, "totalpop"])
 plot(play$geometry, add = TRUE)
 
 # Oh, that's less than ideal. Turns out R's native graphics engine kind of fudges
-# things around a little bit. Quick plots can be useful for checking our progress
-# but we want something a little nicer to inform decision making.
+# things around a little bit and messes up the alignment of the two layers. Quick
+# plots can be useful for checking our progress but we want something a little nicer
+# to inform decision making.
 
 
 #---- Step 3. Pretty maps with the tmap package #----
 
 # tmap uses a similar syntax to ggplot, but is geared toward spatial data and
-# mapmaking. Instead of 'geom_' calls to add layers, we use 'tm_', etc.
+# mapmaking. Instead of 'geom_' calls to add layers, we use 'tm_',and can add
+# additional layers and options using a '+' at the end of each function.
 
 # Let's make a quick map of population density
 tm_shape(tract.pop) +
@@ -175,13 +185,14 @@ play.pop.tract <- popdens.tract +
           size = 0.2,
           col = "black",
           border.col = "grey50") +
-  tm_add_legend(type = "symbol", # tm_dots doesn't include a legend, so we need
-                labels = "Playgrounds", # to make our own
+  tm_add_legend(type = "symbol",        # tm_dots doesn't include a legend, so 
+                labels = "Playgrounds", # we need to make our own
                 col = "black",
                 border.col = "grey50",
                 shape = 21,
                 size = 0.5) +
-  tm_compass(position = c("left", "BOTTOM")) + # Centering the north arrow
+  tm_compass(size = 1, # The default size (2) is a little big
+             position = c("left", "BOTTOM")) + # Aligning the north arrow
   tm_scale_bar(position = c("left", "BOTTOM"),
                breaks = c(0, 1, 2, 3)) + # Set up the scale breaks at 0, 1, 2, 3 miles
   tm_layout(main.title = "Playgrounds and Tract Population - Baltimore, MD",
@@ -243,7 +254,8 @@ play.pop.csa <- tm_shape(csa.pop,
                 border.col = "grey50",
                 shape = 21,
                 size = 0.5) +
-  tm_compass(position = c("left", "BOTTOM")) +
+  tm_compass(size = 1,
+             position = c("left", "BOTTOM")) +
   tm_scale_bar(position = c("left", "BOTTOM"),
                breaks = c(0, 1, 2, 3)) +
   tm_layout(main.title = "Playgrounds and CSA Population - Baltimore, MD",
@@ -260,10 +272,12 @@ play.pop.csa
 # Let's get a count of how many playgrounds there are in each CSA
 csa.pop <- csa.pop %>%
   mutate(playgrounds = lengths(st_intersects(csa.pop, play)))
-    # Creating a new variable called 'playgrounds' that counts how many points from
-    # the 'play' shapefile are in each CSA polygon. st_intersects returns a list
-    # of the points that are in each CSA, and the lengths function just counts how
-    # long each list is.
+    # We've created a new variable called 'playgrounds' that counts how many points from
+    # the 'play' shapefile are in each CSA polygon. 'st_intersects' returns a list
+    # of the points that are in each CSA, and the 'lengths' function just counts how
+    # long each list is. e.g. If playground 1, 5, 12, and 20 are in the first CSA,
+    # we can count how long that list is (4) and assign that value as the total
+    # number of playgrounds in that CSA.
 
 # Now we can plot that new variable in a choropleth
 play.dens <- tm_shape(csa.pop,
@@ -272,7 +286,8 @@ play.dens <- tm_shape(csa.pop,
               title = "Playgrounds\nper Capita", 
               style = "cont", 
               palette = "Reds") +
-  tm_compass(position = c("left", "BOTTOM")) +
+  tm_compass(size = 1,
+             position = c("left", "BOTTOM")) +
   tm_scale_bar(position = c("left", "BOTTOM"),
                breaks = c(0, 1, 2, 3)) +
   tm_layout(main.title = "Playgrounds Density by CSA - Baltimore, MD",
@@ -289,9 +304,9 @@ play.dens
 
 #---- Step 6. Saving tmap Output #----
 
-# There are 2 approaches we can use: tmap_save and a graphics device
+# There are 2 approaches we can use: tmap_save and a graphics device.
 
-# tmap_save approach
+# tmap_save approach (single line of code with options)
 tmap_save(tm = play.dens,
           filename = "playground_density_tmsave.png",
           width = 6,
@@ -299,11 +314,12 @@ tmap_save(tm = play.dens,
           dpi = 300,
           units = "in")
 
-# Graphics device
+# Graphics device (slightly more complicated - 3 lines of code)
+  # This workflow works for other graphics objects like ggplot figures too.
 png(filename = "playground_density_grdev.png",
     width = 6,
     height = 8,
     res = 300,
-    units = "in")
-play.dens
-dev.off()
+    units = "in") # Set up your save options
+play.dens # Call the figure you want to save
+dev.off() # Reset the graphics device to allow it to save the figure
